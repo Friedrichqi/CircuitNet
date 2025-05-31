@@ -1,6 +1,6 @@
 import os
 import subprocess
-for iters in range(10000, 130001, 10000):
+for iters in range(140000, 200001, 10000):
     print(f"Evaluating model_iters_{iters}.pth")
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "7"

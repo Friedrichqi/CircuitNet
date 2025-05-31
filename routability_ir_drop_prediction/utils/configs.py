@@ -30,7 +30,7 @@ class Parser(object):
             self.parser.add_argument('--ann_file_train', default='./files/train_N28.csv')
             self.parser.add_argument('--ann_file_test', default='./files/test_N28.csv')
             self.parser.add_argument('--dataset_type', default='CongestionDataset')
-            self.parser.add_argument('--batch_size', default=256)
+            self.parser.add_argument('--batch_size', default=128)
             self.parser.add_argument('--aug_pipeline', default=['Flip'])
             
             self.parser.add_argument('--model_type', default='GPDL')
@@ -40,7 +40,6 @@ class Parser(object):
             self.parser.add_argument('--weight_decay', default=0)
             self.parser.add_argument('--loss_type', default='MSELoss')
             self.parser.add_argument('--eval-metric', default=['NRMS', 'SSIM', 'EMD'])
-            self.parser.add_argument('--quant_mode', default=None)
 
         elif self.parser.parse_args().task == 'drc_routenet':
             self.parser.add_argument('--dataroot', default=os.path.join(training_set_path, 'DRC'))

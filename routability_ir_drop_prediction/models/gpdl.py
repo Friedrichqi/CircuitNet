@@ -79,118 +79,136 @@ class conv(nn.Module):
     def forward(self, input):
         return self.main(input)
 
+
 class upconv(nn.Module):
     def __init__(self, dim_in, dim_out):
         super(upconv, self).__init__()
         self.main = nn.Sequential(
-                nn.ConvTranspose2d(dim_in, dim_out, 4, 2, 1),
-                nn.InstanceNorm2d(dim_out, affine=True),
-                nn.LeakyReLU(0.2, inplace=True),
-                )
+            nn.ConvTranspose2d(dim_in, dim_out, 4, 2, 1),
+            nn.InstanceNorm2d(dim_out, affine=True),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
 
     def forward(self, input):
         return self.main(input)
 
+
 class Encoder(nn.Module):
-    def __init__(self, in_dim=3, out_dim=32):
+    def __init__(self, in_dim=3, out_dim=32, **kwargs):
         super(Encoder, self).__init__()
-        self.in_dim = in_dim
+        self.train_mode = kwargs['train_mode']
+        self.quant_bit = kwargs['quant_bit']
+        self.training = kwargs['training']
+
         self.c1 = conv(in_dim, 32)
-        self.pool1 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.c2 = conv(32, 64)
-        self.pool2 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.c3 = nn.Sequential(
-                nn.Conv2d(64, out_dim, 3, 1, 1),
-                nn.BatchNorm2d(out_dim),
-                nn.Tanh()
-                )
+            nn.Conv2d(64, out_dim, 3, 1, 1),
+            nn.BatchNorm2d(out_dim),
+            nn.Tanh()
+        )
 
     def init_weights(self):
         generation_init_weights(self)
-        
+
+    def _quantize_module(self, module, bits):
+        scale = 2 ** (bits - 1) - 1
+        for param in module.parameters():
+            p = torch.clamp(param.data, -1.0, 1.0)
+            param.data = torch.round(p * scale) / scale
+
+    def _quantize_activation(self, x):
+        scale = 2 ** (self.quant_bit - 1) - 1
+        x = torch.clamp(x, -1.0, 1.0)
+        return torch.round(x * scale) / scale
 
     def forward(self, input):
+        if self.train_mode == 'qat' and self.training:
+            self._quantize_module(self, self.quant_bit)
+
         h1 = self.c1(input)
+        if self.train_mode == 'qat' and self.training:
+            h1 = self._quantize_activation(h1)
+
         h2 = self.pool1(h1)
+        if self.train_mode == 'qat' and self.training:
+            h2 = self._quantize_activation(h2)
+
         h3 = self.c2(h2)
+        if self.train_mode == 'qat' and self.training:
+            h3 = self._quantize_activation(h3)
+
         h4 = self.pool2(h3)
+        if self.train_mode == 'qat' and self.training:
+            h4 = self._quantize_activation(h4)
+
         h5 = self.c3(h4)
-        return h5, h2  # shortpath from 2->7
+        if self.train_mode == 'qat' and self.training:
+            h5 = self._quantize_activation(h5)
+            h2 = self._quantize_activation(h2)
+
+        return h5, h2
 
 
 class Decoder(nn.Module):
-    def __init__(self, out_dim=2, in_dim=32):
+    def __init__(self, out_dim=2, in_dim=32, **kwargs):
         super(Decoder, self).__init__()
+        self.train_mode = kwargs['train_mode']
+        self.quant_bit = kwargs['quant_bit']
+        self.training = kwargs['training']
+
         self.conv1 = conv(in_dim, 32)
         self.upc1 = upconv(32, 16)
         self.conv2 = conv(16, 16)
-        self.upc2 = upconv(32+16, 4)
-        self.conv3 =  nn.Sequential(
-                nn.Conv2d(4, out_dim, 3, 1, 1),
-                nn.Sigmoid()
-                )
+        self.upc2 = upconv(32 + 16, 4)
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(4, out_dim, 3, 1, 1),
+            nn.Sigmoid()
+        )
 
     def init_weights(self):
         generation_init_weights(self)
+
+    def _quantize_module(self, module, bits):
+        scale = 2 ** (bits - 1) - 1
+        for param in module.parameters():
+            p = torch.clamp(param.data, -1.0, 1.0)
+            param.data = torch.round(p * scale) / scale
+
+    def _quantize_activation(self, x):
+        scale = 2 ** (self.quant_bit - 1) - 1
+        x = torch.clamp(x, -1.0, 1.0)
+        return torch.round(x * scale) / scale
 
     def forward(self, input):
         feature, skip = input
+
+        if self.train_mode == 'qat' and self.training:
+            self._quantize_module(self, self.quant_bit)
+
         d1 = self.conv1(feature)
+        if self.train_mode == 'qat' and self.training:
+            d1 = self._quantize_activation(d1)
+
         d2 = self.upc1(d1)
+        if self.train_mode == 'qat' and self.training:
+            d2 = self._quantize_activation(d2)
+
         d3 = self.conv2(d2)
+        if self.train_mode == 'qat' and self.training:
+            d3 = self._quantize_activation(d3)
+
         d4 = self.upc2(torch.cat([d3, skip], dim=1))
-        output = self.conv3(d4)  # shortpath from 2->7
-        return output
+        if self.train_mode == 'qat' and self.training:
+            d4 = self._quantize_activation(d4)
+            skip = self._quantize_activation(skip)
 
-class q_Encoder(nn.Module):
-    def __init__(self, in_dim=3, out_dim=32):
-        super(Encoder, self).__init__()
-        self.in_dim = in_dim
-        self.c1 = conv(in_dim, 32)
-        self.pool1 = nn.MaxPool2d(kernel_size=2,stride=2)
-        self.c2 = conv(32, 64)
-        self.pool2 = nn.MaxPool2d(kernel_size=2,stride=2)
-        self.c3 = nn.Sequential(
-                nn.Conv2d(64, out_dim, 3, 1, 1),
-                nn.BatchNorm2d(out_dim),
-                nn.Tanh()
-                )
+        output = self.conv3(d4)
+        if self.train_mode == 'qat' and self.training:
+            output = self._quantize_activation(output)
 
-    def init_weights(self):
-        generation_init_weights(self)
-        
-
-    def forward(self, input):
-        h1 = self.c1(input)
-        h2 = self.pool1(h1)
-        h3 = self.c2(h2)
-        h4 = self.pool2(h3)
-        h5 = self.c3(h4)
-        return h5, h2  # shortpath from 2->7
-
-
-class q_Decoder(nn.Module):
-    def __init__(self, out_dim=2, in_dim=32):
-        super(Decoder, self).__init__()
-        self.conv1 = conv(in_dim, 32)
-        self.upc1 = upconv(32, 16)
-        self.conv2 = conv(16, 16)
-        self.upc2 = upconv(32+16, 4)
-        self.conv3 =  nn.Sequential(
-                nn.Conv2d(4, out_dim, 3, 1, 1),
-                nn.Sigmoid()
-                )
-
-    def init_weights(self):
-        generation_init_weights(self)
-
-    def forward(self, input):
-        feature, skip = input
-        d1 = self.conv1(feature)
-        d2 = self.upc1(d1)
-        d3 = self.conv2(d2)
-        d4 = self.upc2(torch.cat([d3, skip], dim=1))
-        output = self.conv3(d4)  # shortpath from 2->7
         return output
 
 
@@ -200,8 +218,8 @@ class GPDL(nn.Module):
                  out_channels=2,
                  **kwargs):
         super().__init__()
-        self.encoder = Encoder(in_dim=in_channels)
-        self.decoder = Decoder(out_dim=out_channels)
+        self.encoder = Encoder(in_dim=in_channels, **kwargs)
+        self.decoder = Decoder(out_dim=out_channels, **kwargs)
 
     def forward(self, x):
         x = self.encoder(x)
@@ -214,6 +232,22 @@ class GPDL(nn.Module):
             for k in weight.keys():
                 new_dict[k] = weight[k]
             load_state_dict(self, new_dict, strict=strict, logger=None)
+
+            quant_part = kwargs['quant_part']
+            quant_bit  = kwargs['quant_bit']
+
+            def _quantize_module(module, bits):
+                # symmetric quantization to [-1,1]
+                scale = 2 ** (bits - 1) - 1
+                for param in module.parameters():
+                    p = param.data
+                    p = torch.clamp(p, -1.0, 1.0)
+                    param.data = torch.round(p * scale) / scale
+
+            if 'encoder' in quant_part:
+                _quantize_module(self.encoder, quant_bit)
+            if 'decoder' in quant_part:
+                _quantize_module(self.decoder, quant_bit)
         elif pretrained is None:
             generation_init_weights(self)
         else:

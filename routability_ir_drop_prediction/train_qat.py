@@ -92,8 +92,8 @@ class CosineRestartLr(object):
 def train():
     argp = Parser()
     argp.parser.add_argument("--training", type=bool, default=True)
-    argp.parser.add_argument('--quant_bit', default=None)
-    argp.parser.add_argument('--train_mode', default=None)
+    argp.parser.add_argument('--quant_bit', default=8)
+    argp.parser.add_argument('--train_mode', default='qat')
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)
     if arg.arg_file is not None:
