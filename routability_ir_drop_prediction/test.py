@@ -1,77 +1,138 @@
 # Copyright 2022 CircuitNet. All rights reserved.
 
+"""Optimised test script that fully utilises the GPU.
+
+* Uses a `DataLoader` **only if** `build_dataset` does *not* already return one – avoids the double‑wrapping error you just saw.
+* Keeps all the other GPU‑optimisation tweaks (batching, pin‑memory, AMP, no‑grad, async H2D, etc.).
+
+Drop‑in replacement for the original `test.py`.
+"""
+
 from __future__ import print_function
 
 import os
 import os.path as osp
 import json
-import numpy as np
+from contextlib import nullcontext
+from typing import Any
 
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets.build_dataset import build_dataset
 from utils.metrics import build_metric, build_roc_prc_metric
 from models.build_model import build_model
 from utils.configs import Parser
+import csv
+
+
+def _maybe_dataloader(dataset: Any, arg_dict):
+    """Return a DataLoader unless *dataset* is already one."""
+    if isinstance(dataset, DataLoader):
+        # Already batched – we respect the user's loader as‑is.
+        return dataset
+
+    return DataLoader(
+        dataset,
+        batch_size=arg_dict.get("batch_size", 32),
+        shuffle=False,
+        num_workers=arg_dict.get("num_workers", 4),
+        pin_memory=arg_dict.get("pin_memory", True),
+        drop_last=False,
+        prefetch_factor=4,
+    )
+
+
+def _save_predictions(preds_cpu, paths, save_root):
+    os.makedirs(save_root, exist_ok=True)
+    for base, pred in zip(paths, preds_cpu):
+        np.save(osp.join(save_root, f"{osp.splitext(osp.basename(base))[0]}.npy"), pred)
 
 
 def test():
+    # ------------------------------------------------------------------
+    # 1. Parse args – extra options for GPU performance
+    # ------------------------------------------------------------------
     argp = Parser()
+    argp.parser.add_argument("--num_workers", type=int, default=16)
+    argp.parser.add_argument("--pin_memory", action="store_true")
+    argp.parser.add_argument("--amp", action="store_true", help="Mixed‑precision inference")
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)
+
     if arg.arg_file is not None:
-        with open(arg.arg_file, 'rt') as f:
+        with open(arg.arg_file, "rt") as f:
             arg_dict.update(json.load(f))
 
-    arg_dict['ann_file'] = arg_dict['ann_file_test'] 
-    arg_dict['test_mode'] = True
+    arg_dict["ann_file"] = arg_dict["ann_file_test"]
+    arg_dict["test_mode"] = True
 
-    print('===> Loading datasets')
-    # Initialize dataset
+    # ------------------------------------------------------------------
+    # 2. Dataset / dataloader
+    # ------------------------------------------------------------------
+    print("===> Loading dataset …")
     dataset = build_dataset(arg_dict)
+    loader = _maybe_dataloader(dataset, arg_dict)
 
-    print('===> Building model')
-    # Initialize model parameters
-    model = build_model(arg_dict)
-    if not arg_dict['cpu']:
-        model = model.cuda()
+    # ------------------------------------------------------------------
+    # 3. Model
+    # ------------------------------------------------------------------
+    device = torch.device("cpu" if arg_dict.get("cpu", False) else "cuda:7")
+    model = build_model(arg_dict).to(device).eval()
+    autocast_ctx = (
+        torch.cuda.amp.autocast
+        if (device.type == "cuda" and arg_dict.get("amp", False))
+        else nullcontext
+    )
 
-    # Build metrics
-    metrics = {k:build_metric(k) for k in arg_dict['eval_metric']}
-    avg_metrics = {k:0 for k in arg_dict['eval_metric']}
+    # ------------------------------------------------------------------
+    # 4. Metrics
+    # ------------------------------------------------------------------
+    metrics = {k: build_metric(k) for k in arg_dict["eval_metric"]}
+    metric_totals = {k: 0.0 for k in arg_dict["eval_metric"]}
 
-    count =0
-    with tqdm(total=len(dataset)) as bar:
-        for feature, label, label_path in dataset:
-            if arg_dict['cpu']:
-                input, target = feature, label
-            else:
-                input, target = feature.cuda(), label.cuda()
+    # ------------------------------------------------------------------
+    # 5. Inference loop
+    # ------------------------------------------------------------------
+    print("===> Running inference …")
+    with torch.no_grad(), tqdm(total=len(loader), dynamic_ncols=True) as bar:
+        for features, labels, paths in loader:
+            features = features.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
-            prediction = model(input)
-            for metric, metric_func in metrics.items():
-                if not metric_func(target.cpu(), prediction.squeeze(1).cpu()) == 1:
-                    avg_metrics[metric] += metric_func(target.cpu(), prediction.squeeze(1).cpu())
+            with autocast_ctx():
+                preds = model(features).squeeze(1)
 
-            if arg_dict['plot_roc']:
-                save_path = osp.join(arg_dict['save_path'], 'test_result')
-                if not os.path.exists(save_path):
-                    os.makedirs(save_path)
-                file_name = osp.splitext(osp.basename(label_path[0]))[0]
-                save_path = osp.join(save_path, f'{file_name}.npy')
-                output_final = prediction.float().detach().cpu().numpy()
-                np.save(save_path, output_final)
-                count +=1
+            preds_cpu = preds.detach().cpu()
+            labels_cpu = labels.detach().cpu()
+
+            for name, fn in metrics.items():
+                metric_totals[name] += fn(labels_cpu, preds_cpu)
+
+            if arg_dict.get("plot_roc", False):
+                _save_predictions(
+                    preds_cpu.numpy(),
+                    paths,
+                    osp.join(arg_dict["save_path"], "test_result"),
+                )
 
             bar.update(1)
-    
-    for metric, avg_metric in avg_metrics.items():
-        print("===> Avg. {}: {:.4f}".format(metric, avg_metric / len(dataset))) 
 
-    # eval roc&prc
-    if arg_dict['plot_roc']:
+    # ------------------------------------------------------------------
+    # 6. Print averaged metrics
+    # ------------------------------------------------------------------
+    batches = len(loader)
+    for name, total in metric_totals.items():
+        print(f"===> Avg. {name}: {total / batches:.4f}")
+
+    # ------------------------------------------------------------------
+    # 7. Optional ROC/PRC
+    # ------------------------------------------------------------------
+    if arg_dict.get("plot_roc", False):
         roc_metric, _ = build_roc_prc_metric(**arg_dict)
-        print("\n===> AUC of ROC. {:.4f}".format(roc_metric))
+        print(f"\n===> AUC of ROC. {roc_metric:.4f}")
 
 
 if __name__ == "__main__":

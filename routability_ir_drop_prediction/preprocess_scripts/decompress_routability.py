@@ -1,5 +1,7 @@
 import os
 import time
+import gzip
+import shutil
 
 t = time.time()
 decompress_path = '../routability_features_decompressed'
@@ -12,7 +14,7 @@ for parent,dirnames,filenames in filelist:
         if os.path.splitext(filename)[1] == '.gz':
             filepath = os.path.join(parent, filename)
             print('Process %s' %(filename))
-            os.system('gzip -fdk %s' % filepath)
+            os.system('gzip -d %s' % filepath)
             os.system('mkdir -p %s ' % (parent.replace('routability_features','routability_features_decompressed')))
             os.system('tar -xf %s -C %s && rm -f %s' % (filepath.replace('.gz',''), \
             parent.replace('routability_features','routability_features_decompressed'), filepath.replace('.gz','')))

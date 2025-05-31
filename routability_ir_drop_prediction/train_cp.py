@@ -158,10 +158,6 @@ def train():
                     break
 
         print("===> Iters[{}]({}/{}): Loss: {:.4f}".format(iter_num, iter_num, arg_dict['max_iters'], epoch_loss / print_freq))
-        loss_file_path = f"./{arg_dict['save_path']}/loss.csv"
-        with open(loss_file_path, 'a') as loss_file:
-            loss_file.write(f"{iter_num},{epoch_loss / print_freq}\n")
-
         if iter_num % save_freq == 0:
             checkpoint(model, iter_num, arg_dict['save_path'])
         epoch_loss = 0
