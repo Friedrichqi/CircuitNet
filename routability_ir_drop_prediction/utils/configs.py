@@ -40,6 +40,7 @@ class Parser(object):
             self.parser.add_argument('--weight_decay', default=0)
             self.parser.add_argument('--loss_type', default='MSELoss')
             self.parser.add_argument('--eval-metric', default=['NRMS', 'SSIM', 'EMD'])
+            self.parser.add_argument('--quant_mode', default=None)
 
         elif self.parser.parse_args().task == 'drc_routenet':
             self.parser.add_argument('--dataroot', default=os.path.join(training_set_path, 'DRC'))

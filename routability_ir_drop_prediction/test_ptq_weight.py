@@ -80,7 +80,24 @@ def test():
     # 3. Model
     # ------------------------------------------------------------------
     device = torch.device("cpu" if arg_dict.get("cpu", False) else "cuda")
-    model = build_model(arg_dict).to(device).eval()
+    # 3a. Build and post-quantize the model to 8-bit (dynamic quantization)
+    model_fp32 = build_model(arg_dict)
+    # post-quantize all weight layers (Linear, Conv2d, LayerNorm, BatchNorm*)
+    model = torch.quantization.quantize_dynamic(
+        model_fp32,
+        {
+            torch.nn.Linear,
+            torch.nn.Conv2d,
+            torch.nn.ConvTranspose2d,    # ← add this
+            torch.nn.LayerNorm,
+            torch.nn.BatchNorm1d,
+            torch.nn.BatchNorm2d,
+        },
+        dtype=torch.qint8,
+    )
+    model = model.to(device).eval()
+
+    # 3b. Set up AMP/autocast context (no effect on int8 path)
     autocast_ctx = (
         torch.cuda.amp.autocast
         if (device.type == "cuda" and arg_dict.get("amp", False))
