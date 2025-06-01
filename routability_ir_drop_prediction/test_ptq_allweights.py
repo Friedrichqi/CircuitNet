@@ -26,7 +26,9 @@ from utils.metrics import build_metric, build_roc_prc_metric
 from models.build_model import build_model
 from utils.configs import Parser
 import csv
-
+import argparse
+import bitsandbytes as bnb
+import sys
 
 def _maybe_dataloader(dataset: Any, arg_dict):
     """Return a DataLoader unless *dataset* is already one."""
@@ -56,11 +58,12 @@ def test():
     # 1. Parse args – extra options for GPU performance
     # ------------------------------------------------------------------
     argp = Parser()
-    argp.parser.add_argument("--num_workers", type=int, default=16)
-    argp.parser.add_argument("--pin_memory", action="store_true")
-    argp.parser.add_argument("--amp", action="store_true", help="Mixed‑precision inference")
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)
+    arg_dict['pretrained'] = './work_dir/congestion_gpdl_sft/model_iters_200000.pth'
+    arg_dict['quant_part'] = ['decoder']
+    arg_dict['quant_bit'] = 16
+
 
     if arg.arg_file is not None:
         with open(arg.arg_file, "rt") as f:
@@ -82,22 +85,9 @@ def test():
     device = torch.device("cpu" if arg_dict.get("cpu", False) else "cuda")
     # 3a. Build and post-quantize the model to 8-bit (dynamic quantization)
     model_fp32 = build_model(arg_dict)
-    # post-quantize all weight layers (Linear, Conv2d, LayerNorm, BatchNorm*)
-    model = torch.quantization.quantize_dynamic(
-        model_fp32,
-        {
-            torch.nn.Linear,
-            torch.nn.Conv2d,
-            torch.nn.ConvTranspose2d,    # ← add this
-            torch.nn.LayerNorm,
-            torch.nn.BatchNorm1d,
-            torch.nn.BatchNorm2d,
-        },
-        dtype=torch.qint8,
-    )
-    model = model.to(device).eval()
+    model = model_fp32.to(device).eval()
 
-    # 3b. Set up AMP/autocast context (no effect on int8 path)
+    # 3b. Set up AMP/autocast context
     autocast_ctx = (
         torch.cuda.amp.autocast
         if (device.type == "cuda" and arg_dict.get("amp", False))
@@ -140,6 +130,7 @@ def test():
     # ------------------------------------------------------------------
     # 6. Print averaged metrics
     # ------------------------------------------------------------------
+    sys.stdout = open(os.path.join("./work_dir/ptq_allweights", f"decpder_{arg_dict['quant_bit']}bits.txt"), 'w')
     batches = len(loader)
     for name, total in metric_totals.items():
         print(f"===> Avg. {name}: {total / batches:.4f}")
@@ -150,6 +141,9 @@ def test():
     if arg_dict.get("plot_roc", False):
         roc_metric, _ = build_roc_prc_metric(**arg_dict)
         print(f"\n===> AUC of ROC. {roc_metric:.4f}")
+
+    sys.stdout.close()
+    
 
 
 if __name__ == "__main__":

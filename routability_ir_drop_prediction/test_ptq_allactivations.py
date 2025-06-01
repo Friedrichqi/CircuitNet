@@ -26,7 +26,9 @@ from utils.metrics import build_metric, build_roc_prc_metric
 from models.build_model import build_model
 from utils.configs import Parser
 import csv
-
+import argparse
+import bitsandbytes as bnb
+import sys
 
 def _maybe_dataloader(dataset: Any, arg_dict):
     """Return a DataLoader unless *dataset* is already one."""
@@ -58,6 +60,10 @@ def test():
     argp = Parser()
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)
+    arg_dict['pretrained'] = './work_dir/congestion_gpdl_sft/model_iters_200000.pth'
+    arg_dict['quant_bit'] = 4
+    arg_dict['train_mode'] = 'all_activations'
+
 
     if arg.arg_file is not None:
         with open(arg.arg_file, "rt") as f:
@@ -77,7 +83,11 @@ def test():
     # 3. Model
     # ------------------------------------------------------------------
     device = torch.device("cpu" if arg_dict.get("cpu", False) else "cuda")
-    model = build_model(arg_dict).to(device).eval()
+    # 3a. Build and post-quantize the model to 8-bit (dynamic quantization)
+    model_fp32 = build_model(arg_dict)
+    model = model_fp32.to(device).eval()
+
+    # 3b. Set up AMP/autocast context
     autocast_ctx = (
         torch.cuda.amp.autocast
         if (device.type == "cuda" and arg_dict.get("amp", False))
@@ -120,6 +130,7 @@ def test():
     # ------------------------------------------------------------------
     # 6. Print averaged metrics
     # ------------------------------------------------------------------
+    sys.stdout = open(os.path.join("./work_dir/ptq_allactivations", f"{arg_dict['quant_bit']}bits.txt"), 'w')
     batches = len(loader)
     for name, total in metric_totals.items():
         print(f"===> Avg. {name}: {total / batches:.4f}")
@@ -130,6 +141,9 @@ def test():
     if arg_dict.get("plot_roc", False):
         roc_metric, _ = build_roc_prc_metric(**arg_dict)
         print(f"\n===> AUC of ROC. {roc_metric:.4f}")
+
+    sys.stdout.close()
+    
 
 
 if __name__ == "__main__":

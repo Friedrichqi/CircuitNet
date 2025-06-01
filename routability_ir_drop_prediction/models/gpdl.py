@@ -98,7 +98,6 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.train_mode = kwargs.get('train_mode', None)
         self.quant_bit = kwargs.get('quant_bit', 32)
-        self.training = kwargs.get('training', False)
 
         self.c1 = conv(in_dim, 32)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -114,10 +113,6 @@ class Encoder(nn.Module):
         generation_init_weights(self)
 
     def _quantize_module(self, module, bits):
-        # scale = 2 ** (bits - 1) - 1
-        # for param in module.parameters():
-        #     p = torch.clamp(param.data, -1.0, 1.0)
-        #     param.data = torch.round(p * scale) / scale
         scale = 2 ** bits - 1
         for param in module.parameters():
             minimum = param.data.min()
@@ -128,9 +123,6 @@ class Encoder(nn.Module):
                 param.data = param.data * scaling_factor + minimum
 
     def _quantize_activation(self, x):
-        # scale = 2 ** (self.quant_bit - 1) - 1
-        # x = torch.clamp(x, -1.0, 1.0)
-        # return torch.round(x * scale) / scale
         scale = 2 ** self.quant_bit - 1
         minimum = x.min()
         scaling_factor = x.max() - x.min()
@@ -141,27 +133,27 @@ class Encoder(nn.Module):
         return x
 
     def forward(self, input):
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode == 'qat':
             self._quantize_module(self, self.quant_bit)
 
         h1 = self.c1(input)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'encoder_activations']:
             h1 = self._quantize_activation(h1)
 
         h2 = self.pool1(h1)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'encoder_activations']:
             h2 = self._quantize_activation(h2)
 
         h3 = self.c2(h2)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'encoder_activations']:
             h3 = self._quantize_activation(h3)
 
         h4 = self.pool2(h3)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'encoder_activations']:
             h4 = self._quantize_activation(h4)
 
         h5 = self.c3(h4)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'encoder_activations']:
             h5 = self._quantize_activation(h5)
             h2 = self._quantize_activation(h2)
 
@@ -173,7 +165,6 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.train_mode = kwargs.get('train_mode', None)
         self.quant_bit = kwargs.get('quant_bit', 32)
-        self.training = kwargs.get('training', False)
 
         self.conv1 = conv(in_dim, 32)
         self.upc1 = upconv(32, 16)
@@ -210,28 +201,28 @@ class Decoder(nn.Module):
     def forward(self, input):
         feature, skip = input
 
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode == 'qat':
             self._quantize_module(self, self.quant_bit)
 
         d1 = self.conv1(feature)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'decoder_activations']:
             d1 = self._quantize_activation(d1)
 
         d2 = self.upc1(d1)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'decoder_activations']:
             d2 = self._quantize_activation(d2)
 
         d3 = self.conv2(d2)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'decoder_activations']:
             d3 = self._quantize_activation(d3)
 
         d4 = self.upc2(torch.cat([d3, skip], dim=1))
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'decoder_activations']:
             d4 = self._quantize_activation(d4)
             skip = self._quantize_activation(skip)
 
         output = self.conv3(d4)
-        if self.train_mode == 'qat' and self.training:
+        if self.train_mode in ['qat', 'all_activations', 'decoder_activations']:
             output = self._quantize_activation(output)
 
         return output
@@ -262,12 +253,6 @@ class GPDL(nn.Module):
             quant_bit  = kwargs.get('quant_bit', 32)
 
             def _quantize_module(module, bits):
-                # symmetric quantization to [-1,1]
-                # scale = 2 ** (bits - 1) - 1
-                # for param in module.parameters():
-                #     p = param.data
-                #     p = torch.clamp(p, -1.0, 1.0)
-                #     param.data = torch.round(p * scale) / scale
                 scale = 2 ** bits - 1
                 for param in module.parameters():
                     minimum = param.data.min()
