@@ -1,0 +1,31 @@
+{
+    "task": "congestion_gpdl",
+    "save_path": "work_dir/congestion_gpdl_qint4/",
+    "pretrained": "/data/home/qyjh/ML4IC/CircuitNet/routability_ir_drop_prediction/congestion.pth",
+    "max_iters": 200000,
+    "plot_roc": false,
+    "arg_file": null,
+    "cpu": false,
+    "dataroot": "/data/home/qyjh/ML4IC/CircuitNet/routability_ir_drop_prediction/training_set/congestion",
+    "ann_file_train": "./files/train_N28.csv",
+    "ann_file_test": "./files/test_N28.csv",
+    "dataset_type": "CongestionDataset",
+    "batch_size": 128,
+    "aug_pipeline": [
+        "Flip"
+    ],
+    "model_type": "GPDL",
+    "in_channels": 3,
+    "out_channels": 1,
+    "lr": 0.0002,
+    "weight_decay": 0,
+    "loss_type": "MSELoss",
+    "eval_metric": [
+        "NRMS",
+        "SSIM",
+        "EMD"
+    ],
+    "training": true,
+    "quant_bit": 4,
+    "train_mode": "qat"
+}

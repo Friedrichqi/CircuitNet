@@ -12,6 +12,7 @@ from models.build_model import build_model
 from utils.configs import Parser
 from math import cos, pi
 import sys, os, subprocess
+import argparse
 
 
 def checkpoint(model, epoch, save_path):
@@ -92,7 +93,7 @@ class CosineRestartLr(object):
 def train():
     argp = Parser()
     argp.parser.add_argument("--training", type=bool, default=True)
-    argp.parser.add_argument('--quant_bit', default=8)
+    argp.parser.add_argument('--quant_bit', default=16, type=int)
     argp.parser.add_argument('--train_mode', default='qat')
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)

@@ -96,9 +96,9 @@ class upconv(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, in_dim=3, out_dim=32, **kwargs):
         super(Encoder, self).__init__()
-        self.train_mode = kwargs['train_mode']
-        self.quant_bit = kwargs['quant_bit']
-        self.training = kwargs['training']
+        self.train_mode = kwargs.get('train_mode', None)
+        self.quant_bit = kwargs.get('quant_bit', 32)
+        self.training = kwargs.get('training', False)
 
         self.c1 = conv(in_dim, 32)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -114,15 +114,31 @@ class Encoder(nn.Module):
         generation_init_weights(self)
 
     def _quantize_module(self, module, bits):
-        scale = 2 ** (bits - 1) - 1
+        # scale = 2 ** (bits - 1) - 1
+        # for param in module.parameters():
+        #     p = torch.clamp(param.data, -1.0, 1.0)
+        #     param.data = torch.round(p * scale) / scale
+        scale = 2 ** bits - 1
         for param in module.parameters():
-            p = torch.clamp(param.data, -1.0, 1.0)
-            param.data = torch.round(p * scale) / scale
+            minimum = param.data.min()
+            scaling_factor = param.data.max() - param.data.min()
+            if scaling_factor > 0:
+                param.data = (param.data - minimum) / scaling_factor
+                param.data = torch.round(param.data * scale) / scale
+                param.data = param.data * scaling_factor + minimum
 
     def _quantize_activation(self, x):
-        scale = 2 ** (self.quant_bit - 1) - 1
-        x = torch.clamp(x, -1.0, 1.0)
-        return torch.round(x * scale) / scale
+        # scale = 2 ** (self.quant_bit - 1) - 1
+        # x = torch.clamp(x, -1.0, 1.0)
+        # return torch.round(x * scale) / scale
+        scale = 2 ** self.quant_bit - 1
+        minimum = x.min()
+        scaling_factor = x.max() - x.min()
+        if scaling_factor > 0:
+            x = (x - minimum) / scaling_factor
+            x = torch.round(x * scale) / scale
+            x = x * scaling_factor + minimum
+        return x
 
     def forward(self, input):
         if self.train_mode == 'qat' and self.training:
@@ -155,9 +171,9 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, out_dim=2, in_dim=32, **kwargs):
         super(Decoder, self).__init__()
-        self.train_mode = kwargs['train_mode']
-        self.quant_bit = kwargs['quant_bit']
-        self.training = kwargs['training']
+        self.train_mode = kwargs.get('train_mode', None)
+        self.quant_bit = kwargs.get('quant_bit', 32)
+        self.training = kwargs.get('training', False)
 
         self.conv1 = conv(in_dim, 32)
         self.upc1 = upconv(32, 16)
@@ -172,15 +188,24 @@ class Decoder(nn.Module):
         generation_init_weights(self)
 
     def _quantize_module(self, module, bits):
-        scale = 2 ** (bits - 1) - 1
+        scale = 2 ** bits - 1
         for param in module.parameters():
-            p = torch.clamp(param.data, -1.0, 1.0)
-            param.data = torch.round(p * scale) / scale
+            minimum = param.data.min()
+            scaling_factor = param.data.max() - param.data.min()
+            if scaling_factor > 0:
+                param.data = (param.data - minimum) / scaling_factor
+                param.data = torch.round(param.data * scale) / scale
+                param.data = param.data * scaling_factor + minimum
 
     def _quantize_activation(self, x):
-        scale = 2 ** (self.quant_bit - 1) - 1
-        x = torch.clamp(x, -1.0, 1.0)
-        return torch.round(x * scale) / scale
+        scale = 2 ** self.quant_bit - 1
+        minimum = x.min()
+        scaling_factor = x.max() - x.min()
+        if scaling_factor > 0:
+            x = (x - minimum) / scaling_factor
+            x = torch.round(x * scale) / scale
+            x = x * scaling_factor + minimum
+        return x
 
     def forward(self, input):
         feature, skip = input
@@ -233,16 +258,24 @@ class GPDL(nn.Module):
                 new_dict[k] = weight[k]
             load_state_dict(self, new_dict, strict=strict, logger=None)
 
-            quant_part = kwargs['quant_part']
-            quant_bit  = kwargs['quant_bit']
+            quant_part = kwargs.get('quant_part', [])
+            quant_bit  = kwargs.get('quant_bit', 32)
 
             def _quantize_module(module, bits):
                 # symmetric quantization to [-1,1]
-                scale = 2 ** (bits - 1) - 1
+                # scale = 2 ** (bits - 1) - 1
+                # for param in module.parameters():
+                #     p = param.data
+                #     p = torch.clamp(p, -1.0, 1.0)
+                #     param.data = torch.round(p * scale) / scale
+                scale = 2 ** bits - 1
                 for param in module.parameters():
-                    p = param.data
-                    p = torch.clamp(p, -1.0, 1.0)
-                    param.data = torch.round(p * scale) / scale
+                    minimum = param.data.min()
+                    scaling_factor = param.data.max() - param.data.min()
+                    if scaling_factor > 0:
+                        param.data = (param.data - minimum) / scaling_factor
+                        param.data = torch.round(param.data * scale) / scale
+                        param.data = param.data * scaling_factor + minimum
 
             if 'encoder' in quant_part:
                 _quantize_module(self.encoder, quant_bit)

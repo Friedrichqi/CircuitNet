@@ -38,7 +38,7 @@ def _maybe_dataloader(dataset: Any, arg_dict):
         dataset,
         batch_size=arg_dict.get("batch_size", 256),
         shuffle=False,
-        num_workers=arg_dict.get("num_workers", 16),
+        num_workers=arg_dict.get("num_workers", 8),
         pin_memory=arg_dict.get("pin_memory", True),
         drop_last=False,
         prefetch_factor=4,
@@ -56,7 +56,7 @@ def test():
     # 1. Parse args – extra options for GPU performance
     # ------------------------------------------------------------------
     argp = Parser()
-    argp.parser.add_argument("--num_workers", type=int, default=16)
+    argp.parser.add_argument("--num_workers", type=int, default=32)
     argp.parser.add_argument("--pin_memory", action="store_true")
     argp.parser.add_argument("--amp", action="store_true", help="Mixed‑precision inference")
     arg = argp.parser.parse_args()
