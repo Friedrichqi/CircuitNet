@@ -54,17 +54,16 @@ def _save_predictions(preds_cpu, paths, save_root):
 
 
 def test(quant_bit: int = 8):
-    # ------------------------------------------------------------------
-    # 1. Parse args – extra options for GPU performance
-    # ------------------------------------------------------------------
-    argp = Parser()
-    arg = argp.parser.parse_args()
-    arg_dict = vars(arg)
-    arg_dict['pretrained'] = f'./work_dir/congestion_gpdl_qint{quant_bit}/model_iters_200000.pth'
-    arg_dict['quant_bit'] = quant_bit
-    arg_dict['train_mode'] = None
-
     for quant_part in [['encoder'], ['decoder'], ['encoder', 'decoder']]: 
+        # ------------------------------------------------------------------
+        # 1. Parse args – extra options for GPU performance
+        # ------------------------------------------------------------------
+        argp = Parser()
+        arg = argp.parser.parse_args()
+        arg_dict = vars(arg)
+        arg_dict['pretrained'] = f'./work_dir/congestion_gpdl_qint{quant_bit}/model_iters_200000.pth'
+        arg_dict['quant_bit'] = quant_bit
+        arg_dict['train_mode'] = None
         arg_dict['quant_part'] = quant_part
 
         if arg.arg_file is not None:
