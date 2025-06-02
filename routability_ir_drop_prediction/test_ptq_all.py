@@ -61,8 +61,8 @@ def test():
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)
     arg_dict['pretrained'] = './work_dir/congestion_gpdl_sft/model_iters_200000.pth'
-    arg_dict['quant_part'] = ['decoder']
-    arg_dict['quant_bit'] = 16
+    arg_dict['quant_bit'] = 32
+    arg_dict['train_mode'] = 'qat'
 
 
     if arg.arg_file is not None:
@@ -130,7 +130,7 @@ def test():
     # ------------------------------------------------------------------
     # 6. Print averaged metrics
     # ------------------------------------------------------------------
-    sys.stdout = open(os.path.join("./work_dir/ptq_allweights", f"decoder_{arg_dict['quant_bit']}bits.txt"), 'w')
+    sys.stdout = open(os.path.join("./work_dir/ptq_all", f"{arg_dict['quant_bit']}bits.txt"), 'w')
     batches = len(loader)
     for name, total in metric_totals.items():
         print(f"===> Avg. {name}: {total / batches:.4f}")

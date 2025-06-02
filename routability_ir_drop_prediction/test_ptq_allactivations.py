@@ -57,6 +57,7 @@ def test():
     # ------------------------------------------------------------------
     # 1. Parse args – extra options for GPU performance
     # ------------------------------------------------------------------
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
     argp = Parser()
     arg = argp.parser.parse_args()
     arg_dict = vars(arg)
