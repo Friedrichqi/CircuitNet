@@ -1,0 +1,41 @@
+{
+    "task": "congestion_gpdl",
+    "save_path": "work_dir/congestion_gpdl_doubleUNet_further3",
+    "pretrained": "work_dir/congestion_gpdl_doubleUNet_further2/model_iters_400000.pth",
+    "max_iters": 400000,
+    "period": [
+        200000,
+        200000
+    ],
+    "restart_factor": [
+        1,
+        0.1
+    ],
+    "plot_roc": false,
+    "arg_file": null,
+    "cpu": false,
+    "dataroot": "/data/home/qyjh/ML4IC/CircuitNet/routability_ir_drop_prediction/training_set/congestion",
+    "ann_file_train": "./files/train_N28.csv",
+    "ann_file_test": "./files/test_N28.csv",
+    "dataset_type": "CongestionDataset",
+    "batch_size": 40,
+    "aug_pipeline": [
+        "Flip"
+    ],
+    "model_type": "GPDL_doubleUNet",
+    "in_channels": 3,
+    "out_channels": 1,
+    "lr": 0.0005,
+    "min_lr": 1e-08,
+    "weight_decay": 0,
+    "loss_type": "MSELoss",
+    "eval_metric": [
+        "NRMS",
+        "SSIM",
+        "EMD"
+    ],
+    "quant_bit": null,
+    "train_mode": null,
+    "ann_file": "./files/train_N28.csv",
+    "test_mode": false
+}

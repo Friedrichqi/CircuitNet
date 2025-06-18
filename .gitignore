@@ -1,0 +1,15 @@
+net_delay_prediction/checkpoints/*
+routability_ir_drop_prediction/work_dir/congestion_gpdl_doubleUNet/model_iters_30000.pth
+
+*.pyc
+
+.vscode/*
+
+__pycache__/*
+
+feature_extraction/out/
+feature_extraction/__pycache__/
+feature_extraction/images/
+feature_extraction/LEF/circuitnet.lef
+
+routability_ir_drop_prediction/training_set/*
