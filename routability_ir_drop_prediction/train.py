@@ -101,8 +101,8 @@ def train():
         with open(arg.arg_file, 'rt') as f:
             arg_dict.update(json.load(f))
 
-    # if arg_dict['model_type'] == 'GPDL_doubleUNet':
-    #     arg_dict['batch_size'] = 32
+    if arg_dict['model_type'] == 'GPDL_doubleUNet':
+        arg_dict['batch_size'] = 16
     if not os.path.exists(arg_dict['save_path']):
         os.makedirs(arg_dict['save_path'])
     with open(os.path.join(arg_dict['save_path'],  'arg.json'), 'wt') as f:
@@ -135,7 +135,7 @@ def train():
 
     epoch_loss = 0
     iter_num = 0
-    print_freq = 100
+    print_freq = 1000
     save_freq = 10000
 
     while iter_num < arg_dict['max_iters']:

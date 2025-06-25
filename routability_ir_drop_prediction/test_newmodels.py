@@ -68,7 +68,7 @@ def test(suffix: str, iter):
     arg_dict["ann_file"] = arg_dict["ann_file_test"]
     arg_dict["test_mode"] = True
 
-    arg_dict['save_path'] = os.path.join('work_dir', f"congestion_gpdl{suffix}")
+    arg_dict['save_path'] = os.path.join('work_dir', f"congestion_gpdl{suffix}_further1")
     if os.path.exists(os.path.join(arg_dict['save_path'], f"model_iters_{iter}.pth")):
         pretrained_path = os.path.join(arg_dict['save_path'], f"model_iters_{iter}.pth")
     else:
@@ -169,10 +169,10 @@ def test(suffix: str, iter):
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')
-    for iter in range(10000, 200001, 10000):
+    for iter in range(310000, 400001, 10000):
     # ['_pretrained', '_sft', '', '_bn_act', '_deep', '_squeeze', '_doubleUNet']
         # run three suffix tests in parallel
-        suffixes = ['']
+        suffixes = ['_doubleUNet']
         processes = []
         for suffix in suffixes:
             p = mp.Process(target=test, args=(suffix, iter))

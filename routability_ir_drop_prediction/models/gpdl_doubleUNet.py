@@ -4,20 +4,6 @@ import torchvision.models as models
 from collections import OrderedDict
 import torch.nn.functional as F
 import pdb
-"""
-This file contains an **end-to-end implementation of Double-UNet** where the
-first encoder is a **frozen ResNet-50** (pre-trained on ImageNet) instead of the
-original VGG-19.  All other ideas from the Double-UNet paper are preserved:
-
-* ASPP after each encoder's bottleneck
-* squeeze-and-excite (SE) blocks inside every conv block
-* element-wise multiplication of Network-1's prediction with the input image
-  before feeding Network-2
-* skip-connections from Encoder-1 to Decoder-2 in addition to those coming
-  from Encoder-2 (dashed arrows in the original figure).
-
-The code is intentionally **modular** so you can swap blocks easily.
-"""
 
 class SELayer(nn.Module):
     def __init__(self, channels: int, reduction: int = 16):
@@ -140,8 +126,6 @@ class ASPP(nn.Module):
         return self.project(x_cat)          # → (B, out_channels, H, W)
 
 class ResNet50Encoder(nn.Module):
-    """Frozen ImageNet ResNet-50 that returns 4 skip maps + bottleneck."""
-
     def __init__(self):
         super().__init__()
         resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
@@ -166,7 +150,6 @@ class ResNet50Encoder(nn.Module):
         return c4, [c3, c2, c1, c0]
 
 class VanillaEncoder(nn.Module):
-    """A plain encoder used for the 2nd UNet."""
 
     def __init__(self, in_channels: int = 3, base_ch: int = 64):
         super().__init__()
@@ -190,15 +173,6 @@ class VanillaEncoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    """UNet-style 4-stage decoder.
-
-    *bottleneck_ch* - channel count of the input feature map.
-    *skip_chs*      - list with 4 ints (deep → shallow) describing the number
-                      of channels in **each** skip connection that will be
-                      provided **after concatenation** (if multiple encoders).
-    *out_channels*        - number of output channels.
-    """
-
     def __init__(self, bottleneck_ch: int, skip_chs: list[int], out_channels: int):
         super().__init__()
         assert len(skip_chs) == 4, "skip_chs must list 4 elements (deepest→shallow)."
@@ -228,10 +202,6 @@ class Decoder(nn.Module):
         d1 = self.dec1(torch.cat([self.up1(d2), skips[3]], dim=1))
         return self.out_conv(d1)
 
-#####################################################################
-#                        Double-UNet wrapper                         #
-#####################################################################
-
 class GPDL_doubleUNet(nn.Module):
 
     def __init__(self, in_channels: int = 3, out_channels: int = 1, **kwargs):
@@ -249,7 +219,6 @@ class GPDL_doubleUNet(nn.Module):
         self.enc2 = VanillaEncoder(in_channels=in_channels, base_ch=64)
         self.aspp2 = ASPP(2048, 1024)
 
-        # skip channels for Decoder-2 comes from **both** encoders ⇒ concatenate.
         self.dec2 = Decoder(bottleneck_ch=1024,  # from aspp2
                              skip_chs=[2048, 1024, 512, 128],  # enc2 + enc1
                              out_channels=3)
@@ -257,7 +226,6 @@ class GPDL_doubleUNet(nn.Module):
         self.output_transform = UpConv(in_channels=6, out_channels=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Return **two full-resolution masks** stacked along the channel axis."""
         # ---------- Network-1 ----------
         bottleneck1, skips1 = self.enc1(x)
         output1 = self.dec1(self.aspp1(bottleneck1), skips1)
@@ -290,9 +258,6 @@ class GPDL_doubleUNet(nn.Module):
             raise TypeError("'pretrained' must be a str or None. "
                             f'But received {type(pretrained)}.')
 
-#####################################################################
-#                   optional weight initialisation                  #
-#####################################################################
 
 def generation_init_weights(module):
     def init_func(m):
@@ -305,7 +270,6 @@ def generation_init_weights(module):
 
 
 def freeze_bn(module):
-    """Freeze BatchNorm layers - useful when fine-tuning with small batches."""
     for m in module.modules():
         if isinstance(m, nn.BatchNorm2d):
             m.eval()

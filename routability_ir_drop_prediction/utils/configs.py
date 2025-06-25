@@ -37,7 +37,7 @@ class Parser(object):
             self.parser.add_argument('--model_type', default='GPDL')
             self.parser.add_argument('--in_channels', default=3)
             self.parser.add_argument('--out_channels', default=1)
-            self.parser.add_argument('--lr', default=5e-4)
+            self.parser.add_argument('--lr', default=1e-3)
             self.parser.add_argument('--min_lr', default=1e-8)
             self.parser.add_argument('--weight_decay', default=0)
             self.parser.add_argument('--loss_type', default='MSELoss')

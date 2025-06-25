@@ -114,7 +114,7 @@ def train():
     print('===> Building model')
     # Initialize model parameters
     iteration_id = 400000
-    pretrained_path = f'work_dir/congestion_gpdl{arg_dict["model_type"][4:]}_further2/'
+    pretrained_path = f'work_dir/congestion_gpdl{arg_dict["model_type"][4:]}_further1_new/'
     if os.path.exists(os.path.join(pretrained_path, f"model_iters_{iteration_id}.pth")):
         pretrained_path = os.path.join(pretrained_path, f"model_iters_{iteration_id}.pth")
     else:
@@ -146,7 +146,7 @@ def train():
 
     epoch_loss = 0
     iter_num = 0
-    print_freq = 100
+    print_freq = 1000
     save_freq = 10000
 
     while iter_num < arg_dict['max_iters']:
